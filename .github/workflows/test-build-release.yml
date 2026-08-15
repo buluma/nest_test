@@ -1,0 +1,77 @@
+name: Test Build Release
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-node@499efea38c70db7a55d6323abcaa74fc7b16d3ae  # v6.0.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    needs: [lint]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-node@499efea38c70db7a55d6323abcaa74fc7b16d3ae  # v6.0.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: [test]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-node@499efea38c70db7a55d6323abcaa74fc7b16d3ae  # v6.0.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: "jq -n --arg sha \"${{ github.sha }}\" '{sha: $sha}' > deploy-meta.json"
+      - uses: actions/upload-artifact@ea65f328635035a7637d07f2debbc25512ab2e54  # v4.3.0
+        with:
+          name: deploy-meta
+          path: deploy-meta.json
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@499efea38c70db7a55d6323abcaa74fc7b16d3ae  # v6.0.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,225 @@
+/* Dashboard Styles */
+:root {
+    --primary-color: #1a1a2e;
+    --secondary-color: #16213e;
+    --accent-color: #e94560;
+    --bg-color: #f8f9fa;
+    --card-bg: #ffffff;
+    --text-color: #333333;
+    --border-color: #dee2e6;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.controls {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.control-label {
+    font-weight: 600;
+    color: var(--text-color);
+    font-size: 0.9rem;
+}
+
+.control-select {
+    padding: 8px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--card-bg);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.control-select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s ease;
+}
+
+.btn-primary {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #d63851;
+}
+
+.btn-secondary {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #b4916a;
+}
+
+.repo-item, .pr-item, .run-item {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.repo-item:hover, .pr-item:hover, .run-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.repo-item h3, .pr-item h4, .run-item h4 {
+    margin: 0 0 8px 0;
+    font-size: 1.1rem;
+}
+
+.repo-item p, .pr-item p, .run-item p {
+    color: var(--text-color);
+    font-size: 0.95rem;
+}
+
+.repo-item .url {
+    color: var(--accent-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.repo-item .url:hover {
+    text-decoration: underline;
+}
+
+.repo-item .date {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 4px;
+}
+
+.filters {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.filters select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    font-size: 0.9rem;
+}
+
+.filters select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+#repos-list, #prs-list, #runs-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr);
+    gap: 20px;
+}
+
+@media (max-width: 768px) {
+    .controls {
+        flex-direction: column;
+    }
+    .filters {
+        flex-wrap: wrap;
+    }
+}
+
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.badge-open, .badge-queued, .badge-in_progress, .badge-requested, .badge-waiting, .badge-pending {
+    background-color: #d1f7c4;
+    color: #1a7f37;
+}
+
+.badge-closed, .badge-cancelled, .badge-timed_out, .badge-stale {
+    background-color: #ffeef0;
+    color: #cf222e;
+}
+
+.badge-merged, .badge-success {
+    background-color: #dafbe1;
+    color: #1a7f37;
+}
+
+.badge-failure {
+    background-color: #ffebe9;
+    color: #cf222e;
+}
+
+.badge-skipped, .badge-neutral {
+    background-color: #f6f8fa;
+    color: #57606a;
+}
+
+.empty {
+    color: #57606a;
+    font-style: italic;
+    padding: 16px;
+}
+
+@media print {
+    .controls, .controls * {
+        display: none;
+    }
+}

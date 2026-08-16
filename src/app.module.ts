@@ -6,7 +6,6 @@ import { DatabaseModule } from './common/database/database.module';
 import { GithubModule } from './common/github/github.module';
 import { PollerModule } from './modules/poller.module';
 import { ApiModule } from './modules/api.module';
-import { DashboardModule } from './modules/dashboard.module';
 
 @Module({
   imports: [
@@ -15,7 +14,6 @@ import { DashboardModule } from './modules/dashboard.module';
     GithubModule,
     PollerModule,
     ApiModule,
-    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

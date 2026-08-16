@@ -8,55 +8,72 @@
 </head>
 <body>
     <div class="container">
-        <header>
+        <header class="dashboard-header">
             <h1>GitHub Dashboard</h1>
             <div class="controls">
-                <select id="timeWindow">
-                    <option value="1h">Last 1 hour</option>
-                    <option value="24h" selected>Last 24 hours</option>
-                    <option value="7d">Last 7 days</option>
-                    <option value="30d">Last 30 days</option>
-                </select>
-                <button id="refreshBtn">Refresh</button>
-                <span id="lastUpdated"></span>
+                <div class="control-group">
+                    <label for="timeWindow" class="control-label">Time Window</label>
+                    <select id="timeWindow" class="control-select">
+                        <option value="1h">Last 1 hour</option>
+                        <option value="24h" selected>Last 24 hours</option>
+                        <option value="7d">Last 7 days</option>
+                        <option value="30d">Last 30 days</option>
+                    </select>
+                </div>
+                <button id="refreshBtn" class="btn btn-primary">Refresh</button>
+                <span id="lastUpdated" class="last-updated"></span>
             </div>
         </header>
 
-        <section id="repos-section">
-            <h2>Repositories</h2>
-            <div id="repos-list" class="repos-list"></div>
-        </section>
+        <div class="dashboard-grid">
+            <!-- Repos Section -->
+            <section class="dashboard-section repos-section">
+                <div class="section-header">
+                    <h2>Repositories</h2>
+                    <span id="repos-count" class="count-badge">0</span>
+                </div>
+                <div id="repos-list" class="card-grid"></div>
+            </section>
 
-        <section id="prs-section">
-            <h2>Pull Requests</h2>
-            <div class="filters">
-                <select id="prStateFilter">
-                    <option value="open">Open</option>
-                    <option value="closed">Closed</option>
-                    <option value="all">All</option>
-                </select>
-                <select id="prRepoFilter">
-                    <option value="">All Repos</option>
-                </select>
-            </div>
-            <div id="prs-list" class="prs-list"></div>
-        </section>
+            <!-- PRs Section -->
+            <section class="dashboard-section prs-section">
+                <div class="section-header">
+                    <h2>Pull Requests</h2>
+                    <span id="prs-count" class="count-badge">0</span>
+                </div>
+                <div class="filters">
+                    <select id="prStateFilter" class="filter-select">
+                        <option value="open">Open</option>
+                        <option value="closed">Closed</option>
+                        <option value="all">All</option>
+                    </select>
+                    <select id="prRepoFilter" class="filter-select">
+                        <option value="">All Repos</option>
+                    </select>
+                </div>
+                <div id="prs-list" class="card-grid"></div>
+            </section>
 
-        <section id="runs-section">
-            <h2>Action Runs</h2>
-            <div class="filters">
-                <select id="runStatusFilter">
-                    <option value="completed">Completed</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="queued">Queued</option>
-                    <option value="all">All</option>
-                </select>
-                <select id="runRepoFilter">
-                    <option value="">All Repos</option>
-                </select>
-            </div>
-            <div id="runs-list" class="runs-list"></div>
-        </section>
+            <!-- Runs Section -->
+            <section class="dashboard-section runs-section">
+                <div class="section-header">
+                    <h2>Action Runs</h2>
+                    <span id="runs-count" class="count-badge">0</span>
+                </div>
+                <div class="filters">
+                    <select id="runStatusFilter" class="filter-select">
+                        <option value="completed">Completed</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="queued">Queued</option>
+                        <option value="all">All</option>
+                    </select>
+                    <select id="runRepoFilter" class="filter-select">
+                        <option value="">All Repos</option>
+                    </select>
+                </div>
+                <div id="runs-list" class="card-grid"></div>
+            </section>
+        </div>
     </div>
     <script src="/dashboard/app.js"></script>
 </body>

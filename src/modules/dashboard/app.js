@@ -6,6 +6,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const reposList = document.getElementById('repos-list');
     const prsList = document.getElementById('prs-list');
     const runsList = document.getElementById('runs-list');
+    const reposCount = document.getElementById('repos-count');
+    const prsCount = document.getElementById('prs-count');
+    const runsCount = document.getElementById('runs-count');
     const prStateFilter = document.getElementById('prStateFilter');
     const prRepoFilter = document.getElementById('prRepoFilter');
     const runStatusFilter = document.getElementById('runStatusFilter');
@@ -26,49 +29,124 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Date(Date.now() - ms).toISOString();
     }
 
+    // Safe date formatting
+    function formatDate(dateStr) {
+        if (!dateStr) return 'N/A';
+        try {
+            const dateObj = new Date(dateStr);
+            if (!isNaN(dateObj.getTime())) {
+                return dateObj.toLocaleString();
+            }
+        } catch (e) {}
+        return dateStr;
+    }
+
+    function formatRelativeTime(dateStr) {
+        if (!dateStr) return 'Unknown';
+        try {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return date.toLocaleDateString();
+        } catch (e) {
+            return dateStr;
+        }
+    }
+
+    function createEmptyState(icon, text, subtext) {
+        return `
+            <div class="empty-state">
+                <div class="empty-state-icon">${icon}</div>
+                <div class="empty-state-text">${text}</div>
+                <div class="empty-state-subtext">${subtext}</div>
+            </div>
+        `;
+    }
+
     // Load repos and populate repo filter dropdowns
     async function loadRepos() {
-        const response = await fetch('/repos');
-        const repos = await response.json();
+        try {
+            const response = await fetch('/repos');
+            const repos = await response.json();
 
-        // Render repo cards
-        reposList.innerHTML = '';
-        repos.forEach(repo => {
-            const repoEl = document.createElement('div');
-            repoEl.className = 'repo-item';
-            // Validate date parsing
-            let dateStr = 'Unknown';
-            try {
-                const dateObj = new Date(repo.updated_at);
-                if (!isNaN(dateObj.getTime())) {
-                    dateStr = dateObj.toLocaleString();
-                }
-            } catch (e) {
-                console.warn('Invalid date format for repo:', repo.updated_at, e);
+            reposCount.textContent = repos.length;
+
+            // Render repo cards
+            if (repos.length === 0) {
+                reposList.innerHTML = createEmptyState('📦', 'No repositories', 'No GitHub repositories found');
+                return;
             }
-            repoEl.innerHTML = `
-                <h3>${repo.name}</h3>
-                <p>Full Name: ${repo.full_name}</p>
-                <p>Owner: ${repo.owner_login}</p>
-                <p>Private: ${repo.private ? 'Yes' : 'No'}</p>
-                <p>URL: <a href="${repo.html_url}" target="_blank">${repo.html_url}</a></p>
-                <p>Updated: ${dateStr}</p>
-            `;
-            reposList.appendChild(repoEl);
-        });
 
-        // Populate repo filter dropdowns
-        [prRepoFilter, runRepoFilter].forEach(select => {
-            const current = select.value;
-            select.innerHTML = '<option value="">All Repos</option>';
+            reposList.innerHTML = '';
             repos.forEach(repo => {
-                const opt = document.createElement('option');
-                opt.value = repo.id;
-                opt.textContent = repo.full_name;
-                select.appendChild(opt);
+                const repoEl = document.createElement('div');
+                repoEl.className = 'repo-card';
+                const isPrivate = repo.private === 1 || repo.private === true;
+                const visibilityClass = isPrivate ? 'private' : 'public';
+                const visibilityText = isPrivate ? 'Private' : 'Public';
+
+                // Validate date parsing
+                let dateStr = 'Unknown';
+                try {
+                    const dateObj = new Date(repo.updated_at);
+                    if (!isNaN(dateObj.getTime())) {
+                        dateStr = dateObj.toLocaleString();
+                    }
+                } catch (e) {
+                    console.warn('Invalid date format for repo:', repo.updated_at, e);
+                }
+
+                repoEl.innerHTML = `
+                    <div class="repo-header">
+                        <h3 class="repo-name">${repo.name}</h3>
+                        <span class="repo-visibility ${visibilityClass}">${visibilityText}</span>
+                    </div>
+                    <div class="repo-meta">
+                        <div class="repo-meta-item">
+                            <span class="repo-meta-label">Owner:</span>
+                            <span class="repo-meta-value">${repo.owner_login}</span>
+                        </div>
+                        <div class="repo-meta-item">
+                            <span class="repo-meta-label">Full Name:</span>
+                            <span class="repo-meta-value">${repo.full_name}</span>
+                        </div>
+                        <div class="repo-meta-item">
+                            <span class="repo-meta-label">URL:</span>
+                            <a href="${repo.html_url}" target="_blank" class="repo-meta-value repo-link">${repo.html_url}</a>
+                        </div>
+                    </div>
+                    <div class="repo-updated">
+                        Updated: ${dateStr} · ${formatRelativeTime(repo.updated_at)}
+                    </div>
+                `;
+                reposList.appendChild(repoEl);
             });
-            select.value = current;
-        });
+
+            // Populate repo filter dropdowns
+            [prRepoFilter, runRepoFilter].forEach(select => {
+                const current = select.value;
+                select.innerHTML = '<option value="">All Repos</option>';
+                repos.forEach(repo => {
+                    const opt = document.createElement('option');
+                    opt.value = repo.id;
+                    opt.textContent = repo.full_name;
+                    select.appendChild(opt);
+                });
+                select.value = current;
+            });
+        } catch (error) {
+            console.error('Error loading repos:', error);
+            reposList.innerHTML = createEmptyState('⚠️', 'Error loading repositories', 'Check console for details');
+        }
     }
 
     // Load PRs
@@ -83,42 +161,55 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/prs?${params.toString()}`);
             const prs = await response.json();
 
-            prsList.innerHTML = '';
+            prsCount.textContent = prs.length;
+
             if (prs.length === 0) {
-                prsList.innerHTML = '<p class="empty">No pull requests found.</p>';
+                prsList.innerHTML = createEmptyState('🔀', 'No pull requests', 'No PRs match the current filters');
                 return;
             }
+
+            prsList.innerHTML = '';
             prs.forEach(pr => {
                 const prEl = document.createElement('div');
-                prEl.className = 'pr-item';
-                // Format dates safely
-                const formatDate = (dateStr) => {
-                    if (!dateStr) return 'N/A';
-                    try {
-                        const dateObj = new Date(dateStr);
-                        if (!isNaN(dateObj.getTime())) {
-                            return dateObj.toLocaleString();
-                        }
-                    } catch (e) {}
-                    return dateStr;
-                };
+                prEl.className = 'pr-card';
+
+                const state = (pr.state || 'unknown').toLowerCase();
+                const stateLabel = state === 'open' ? 'Open' : state === 'closed' ? 'Closed' : state === 'merged' ? 'Merged' : state;
+
                 prEl.innerHTML = `
-                    <h4><a href="${pr.html_url}" target="_blank">${pr.title}</a></h4>
-                    <p>Repo: ${pr.repo_name} · #${pr.number}</p>
-                    <p>State: <span class="badge badge-${pr.state}">${pr.state}</span></p>
-                    <p>Author: ${pr.author_login}</p>
-                    <p>Head Branch: ${pr.head_ref}</p>
-                    <p>Base Branch: ${pr.base_ref}</p>
-                    <p>Created: ${formatDate(pr.created_at)}</p>
-                    <p>Updated: ${formatDate(pr.updated_at)}</p>
-                    ${pr.closed_at ? `<p>Closed: ${formatDate(pr.closed_at)}</p>` : ''}
-                    ${pr.merged_at ? `<p>Merged: ${formatDate(pr.merged_at)}</p>` : ''}
+                    <h4 class="pr-title"><a href="${pr.html_url}" target="_blank">${pr.title}</a></h4>
+                    <div class="pr-meta">
+                        <span class="pr-meta-item">
+                            <span class="pr-meta-label">Repo:</span>
+                            <span class="pr-meta-value">${pr.repo_name || 'Unknown'}</span>
+                        </span>
+                        <span class="pr-meta-item">
+                            <span class="pr-meta-label">#${pr.number}</span>
+                        </span>
+                        <span class="pr-meta-item">
+                            <span class="pr-state ${state}">${stateLabel}</span>
+                        </span>
+                        <span class="pr-meta-item">
+                            <span class="pr-meta-label">Author:</span>
+                            <span class="pr-meta-value">${pr.author_login}</span>
+                        </span>
+                        <span class="pr-meta-item">
+                            <span class="pr-meta-label">Branch:</span>
+                            <span class="pr-meta-value">${pr.head_ref} → ${pr.base_ref}</span>
+                        </span>
+                    </div>
+                    <div class="pr-dates">
+                        <span>Created: ${formatDate(pr.created_at)}</span>
+                        <span>Updated: ${formatDate(pr.updated_at)}</span>
+                        ${pr.closed_at ? `<span>Closed: ${formatDate(pr.closed_at)}</span>` : ''}
+                        ${pr.merged_at ? `<span>Merged: ${formatDate(pr.merged_at)}</span>` : ''}
+                    </div>
                 `;
                 prsList.appendChild(prEl);
             });
         } catch (error) {
             console.error('Error loading PRs:', error);
-            prsList.innerHTML = '<p class="empty">Error loading pull requests. Check console.</p>';
+            prsList.innerHTML = createEmptyState('⚠️', 'Error loading PRs', 'Check console for details');
         }
     }
 
@@ -134,41 +225,55 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/runs?${params.toString()}`);
             const runs = await response.json();
 
-            runsList.innerHTML = '';
+            runsCount.textContent = runs.length;
+
             if (runs.length === 0) {
-                runsList.innerHTML = '<p class="empty">No action runs found.</p>';
+                runsList.innerHTML = createEmptyState('⚙️', 'No action runs', 'No workflow runs match the current filters');
                 return;
             }
+
+            runsList.innerHTML = '';
             runs.forEach(run => {
                 const runEl = document.createElement('div');
-                runEl.className = 'run-item';
-                const conclusion = run.conclusion || run.status;
-                // Format dates safely
-                const formatDate = (dateStr) => {
-                    if (!dateStr) return 'N/A';
-                    try {
-                        const dateObj = new Date(dateStr);
-                        if (!isNaN(dateObj.getTime())) {
-                            return dateObj.toLocaleString();
-                        }
-                    } catch (e) {}
-                    return dateStr;
-                };
+                runEl.className = 'run-card';
+
+                const conclusion = (run.conclusion || run.status || 'unknown').toLowerCase();
+                const conclusionLabel = conclusion.charAt(0).toUpperCase() + conclusion.slice(1).replace('_', ' ');
+
                 runEl.innerHTML = `
-                    <h4><a href="${run.html_url}" target="_blank">${run.workflow_name}</a></h4>
-                    <p>Repo: ${run.repo_name} · Run #${run.run_number}</p>
-                    <p>Status: <span class="badge badge-${conclusion}">${conclusion}</span></p>
-                    <p>Branch: ${run.head_branch}</p>
-                    <p>Commit: ${run.head_sha.substring(0, 7)}</p>
-                    <p>Started: ${formatDate(run.run_started_at)}</p>
-                    <p>Updated: ${formatDate(run.updated_at)}</p>
-                    ${run.completed_at ? `<p>Completed: ${formatDate(run.completed_at)}</p>` : ''}
+                    <div class="run-header">
+                        <h4 class="run-workflow"><a href="${run.html_url}" target="_blank">${run.workflow_name || 'Unknown Workflow'}</a></h4>
+                        <span class="run-conclusion ${conclusion}">${conclusionLabel}</span>
+                    </div>
+                    <div class="run-meta">
+                        <div class="run-meta-item">
+                            <span class="run-meta-label">Repo:</span>
+                            <span class="run-meta-value">${run.repo_name || 'Unknown'}</span>
+                        </div>
+                        <div class="run-meta-item">
+                            <span class="run-meta-label">Run:</span>
+                            <span class="run-meta-value">#${run.run_number}</span>
+                        </div>
+                        <div class="run-meta-item">
+                            <span class="run-meta-label">Branch:</span>
+                            <span class="run-meta-value run-branch">${run.head_branch || 'N/A'}</span>
+                        </div>
+                        <div class="run-meta-item">
+                            <span class="run-meta-label">Commit:</span>
+                            <span class="run-meta-value run-sha">${run.head_sha ? run.head_sha.substring(0, 7) : 'N/A'}</span>
+                        </div>
+                    </div>
+                    <div class="run-dates">
+                        <span>Started: ${formatDate(run.run_started_at)}</span>
+                        <span>Updated: ${formatDate(run.updated_at)}</span>
+                        ${run.completed_at ? `<span>Completed: ${formatDate(run.completed_at)}</span>` : ''}
+                    </div>
                 `;
                 runsList.appendChild(runEl);
             });
         } catch (error) {
             console.error('Error loading runs:', error);
-            runsList.innerHTML = '<p class="empty">Error loading runs. Check console.</p>';
+            runsList.innerHTML = createEmptyState('⚠️', 'Error loading runs', 'Check console for details');
         }
     }
 

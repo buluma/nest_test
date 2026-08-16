@@ -7,9 +7,12 @@ describe('parseGithubConfig', () => {
   const createTempKey = () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gh-test-'));
     const keyPath = path.join(tempDir, 'test-key.pem');
-    fs.writeFileSync(keyPath, `-----BEGIN RSA PRIVATE KEY-----
+    fs.writeFileSync(
+      keyPath,
+      `-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAtest
------END RSA PRIVATE KEY-----`);
+-----END RSA PRIVATE KEY-----`,
+    );
     return keyPath;
   };
 
@@ -66,7 +69,9 @@ MIIEowIBAAKCAQEAtest
         WEBHOOK_SECRET: 'test-secret',
       },
       () => {
-        expect(() => parseGithubConfig()).toThrow('GITHUB_APP_PRIVATE_KEY_PATH is required');
+        expect(() => parseGithubConfig()).toThrow(
+          'GITHUB_APP_PRIVATE_KEY_PATH is required',
+        );
       },
     );
   });

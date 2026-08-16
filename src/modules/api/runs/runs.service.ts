@@ -1,35 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../../common/database/database.service';
+import { RunDTO, RunRow } from '../../../common/types/github';
 
 @Injectable()
 export class RunsService {
   constructor(private readonly dbService: DatabaseService) {}
 
-  async getRuns(filters: {
+  getRuns(filters: {
     repoId?: number;
     status?: string;
     since?: string;
     limit?: number;
     offset?: number;
-  }) {
+  }): RunRow[] {
     return this.dbService.getRuns({
       repo_id: filters.repoId,
       status: filters.status === 'all' ? undefined : filters.status,
-      since: filters.since && filters.since !== 'now' ? filters.since : undefined,
+      since:
+        filters.since && filters.since !== 'now' ? filters.since : undefined,
       limit: filters.limit,
       offset: filters.offset,
     });
   }
 
-  async getRunById(id: number) {
+  getRunById(): { message: string } {
     // Implementation depends on schema
     return { message: 'Get run by ID not fully implemented' };
   }
 
-  async createRun(body: any) {
+  createRun(body: RunDTO): ReturnType<DatabaseService['upsertRun']> {
     return this.dbService.upsertRun({
       github_id: body.github_id,
-      repo_id: body.repo_id,
+      repo_id: body.repo_id!,
       workflow_id: body.workflow_id,
       workflow_name: body.workflow_name,
       run_number: body.run_number,
@@ -46,10 +48,10 @@ export class RunsService {
     });
   }
 
-  async updateRun(id: number, body: any) {
+  updateRun(body: RunDTO): ReturnType<DatabaseService['upsertRun']> {
     return this.dbService.upsertRun({
       github_id: body.github_id,
-      repo_id: body.repo_id,
+      repo_id: body.repo_id!,
       workflow_id: body.workflow_id,
       workflow_name: body.workflow_name,
       run_number: body.run_number,
@@ -66,7 +68,7 @@ export class RunsService {
     });
   }
 
-  async deleteRun(id: number) {
+  deleteRun(): { message: string } {
     return { message: 'Delete not fully implemented' };
   }
 }

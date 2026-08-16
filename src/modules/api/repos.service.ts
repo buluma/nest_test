@@ -1,19 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../common/database/database.service';
+import { RepoRow, RepoDTO } from '../../common/types/github';
 
 @Injectable()
 export class RepoService {
   constructor(private readonly dbService: DatabaseService) {}
 
-  async getAllRepos() {
+  getAllRepos(): RepoRow[] {
     return this.dbService.getAllRepos();
   }
 
-  async getRepoById(id: number) {
+  getRepoById(id: number): { id: number } | undefined {
     return this.dbService.getRepoByGithubId(id);
   }
 
-  async createRepo(body: any) {
+  createRepo(body: RepoDTO): ReturnType<DatabaseService['upsertRepo']> {
     return this.dbService.upsertRepo({
       github_id: body.github_id,
       name: body.name,
@@ -25,7 +26,7 @@ export class RepoService {
     });
   }
 
-  async updateRepo(id: number, body: any) {
+  updateRepo(body: RepoDTO): ReturnType<DatabaseService['upsertRepo']> {
     return this.dbService.upsertRepo({
       github_id: body.github_id,
       name: body.name,
@@ -37,7 +38,7 @@ export class RepoService {
     });
   }
 
-  async deleteRepo(id: number) {
+  deleteRepo(): { message: string } {
     // Implementation depends on schema
     return { message: 'Delete not fully implemented' };
   }

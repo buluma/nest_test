@@ -9,7 +9,14 @@ import { ApiModule } from './modules/api.module';
 import { DashboardModule } from './modules/dashboard.module';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, GithubModule, PollerModule, ApiModule, DashboardModule],
+  imports: [
+    ConfigModule,
+    DatabaseModule,
+    GithubModule,
+    PollerModule,
+    ApiModule,
+    DashboardModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

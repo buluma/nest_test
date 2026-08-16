@@ -2,6 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Octokit } from 'octokit';
 import { GithubAppService } from './github-app.service';
 import { DatabaseService } from '../database/database.service';
+import { GitHubRepository, RepoDTO, PRDTO, RunDTO } from '../types/github';
+
+interface InstallationRepositoriesResponse {
+  repositories: GitHubRepository[];
+}
 
 @Injectable()
 export class GithubClientService {
@@ -10,7 +15,7 @@ export class GithubClientService {
 
   constructor(
     private githubAppService: GithubAppService,
-    private dbService: DatabaseService
+    private dbService: DatabaseService,
   ) {}
 
   async init() {
@@ -25,11 +30,14 @@ export class GithubClientService {
     return this.appOctokit;
   }
 
-  async getAllRepos() {
-    const { data } = await this.getOctokit().request('GET /installation/repositories', {
-      per_page: 100,
-    });
-    return data.repositories.map((repo: any) => ({
+  async getAllRepos(): Promise<RepoDTO[]> {
+    const response = await this.getOctokit().request(
+      'GET /installation/repositories',
+      { per_page: 100 },
+    );
+    const data = response.data as InstallationRepositoriesResponse;
+    const repositories: GitHubRepository[] = data.repositories;
+    return repositories.map((repo: GitHubRepository): RepoDTO => ({
       github_id: repo.id,
       name: repo.name,
       full_name: repo.full_name,
@@ -40,23 +48,44 @@ export class GithubClientService {
     }));
   }
 
-  async getPRs(owner: string, repo: string, state: string = 'open', since: string = 'now') {
+  async getPRs(
+    owner: string,
+    repo: string,
+    state: string = 'open',
+  ): Promise<PRDTO[]> {
     const { data } = await this.getOctokit().rest.pulls.list({
       owner,
       repo,
-      state: state as any,
+      state: state as 'open' | 'closed' | 'all',
       sort: 'updated',
       direction: 'desc',
       per_page: 100,
     });
 
-    return data.map(pr => ({
+    // Cast through unknown to avoid TypeScript structural typing issues
+    const pulls = data as unknown as Array<{
+      number: number;
+      title: string;
+      state: string;
+      draft: boolean;
+      user: { login: string } | null;
+      head: { ref: string };
+      base: { ref: string };
+      html_url: string;
+      created_at: string;
+      updated_at: string;
+      closed_at: string | null;
+      merged_at: string | null;
+      merged_by: { login: string } | null;
+    }>;
+
+    return pulls.map((pr): PRDTO => ({
       github_id: pr.number,
       number: pr.number,
       title: pr.title,
       state: pr.state,
       draft: pr.draft,
-      author_login: pr.user?.login,
+      author_login: pr.user?.login ?? '',
       head_ref: pr.head.ref,
       base_ref: pr.base.ref,
       html_url: pr.html_url,
@@ -64,29 +93,54 @@ export class GithubClientService {
       updated_at: pr.updated_at,
       closed_at: pr.closed_at,
       merged_at: pr.merged_at,
-      merged_by_login: (pr as any).merged_by?.login,
+      merged_by_login: pr.merged_by?.login ?? null,
     }));
   }
 
-  async getActionRuns(owner: string, repo: string, status: string = 'completed', since: string = 'now') {
-    const { data } = await this.getOctokit().rest.actions.listWorkflowRunsForRepo({
-      owner,
-      repo,
-      status: status as any,
-      per_page: 100,
-    });
+  async getActionRuns(
+    owner: string,
+    repo: string,
+    status: string = 'completed',
+  ): Promise<RunDTO[]> {
+    const response =
+      await this.getOctokit().rest.actions.listWorkflowRunsForRepo({
+        owner,
+        repo,
+        status: status as 'completed' | 'in_progress' | 'queued' | 'waiting',
+        per_page: 100,
+      });
 
-    return data.workflow_runs.map((run: any) => ({
+    const data = response.data as unknown as {
+      workflow_runs: Array<{
+        id: number;
+        workflow_id: number;
+        name: string | null;
+        display_title: string | null;
+        run_number: number;
+        event: string;
+        status: string;
+        conclusion: string | null;
+        actor: { login: string } | null;
+        head_branch: string | null;
+        head_sha: string | null;
+        html_url: string;
+        run_started_at: string;
+        updated_at: string;
+        completed_at: string | null;
+      }>;
+    };
+
+    return data.workflow_runs.map((run): RunDTO => ({
       github_id: run.id,
       workflow_id: run.workflow_id,
-      workflow_name: run.name || run.display_title || 'Unknown workflow',
+      workflow_name: run.name ?? run.display_title ?? 'Unknown workflow',
       run_number: run.run_number,
       event: run.event,
       status: run.status,
       conclusion: run.conclusion,
-      actor_login: run.actor?.login || 'unknown',
-      head_branch: run.head_branch || '',
-      head_sha: run.head_sha || '',
+      actor_login: run.actor?.login ?? 'unknown',
+      head_branch: run.head_branch ?? '',
+      head_sha: run.head_sha ?? '',
       html_url: run.html_url,
       run_started_at: run.run_started_at,
       updated_at: run.updated_at,
@@ -94,67 +148,37 @@ export class GithubClientService {
     }));
   }
 
-  async syncRepos() {
+  async syncRepos(): Promise<void> {
     const repos = await this.getAllRepos();
-    repos.forEach(async (repo: any) => {
-      await this.dbService.upsertRepo({
-        github_id: repo.github_id,
-        name: repo.name,
-        full_name: repo.full_name,
-        owner_login: repo.owner_login,
-        private: repo.private,
-        html_url: repo.html_url,
-        updated_at: repo.updated_at,
-      });
-    });
+    for (const repo of repos) {
+      this.dbService.upsertRepo(repo);
+    }
     this.logger.log(`Synced ${repos.length} repositories`);
   }
 
-  async syncPRs(owner: string, repo: string, repoId: number) {
+  async syncPRs(owner: string, repo: string, repoId: number): Promise<void> {
     const prs = await this.getPRs(owner, repo);
-    prs.forEach(async (pr: any) => {
-      await this.dbService.upsertPr({
-        github_id: pr.github_id,
+    for (const pr of prs) {
+      this.dbService.upsertPr({
+        ...pr,
         repo_id: repoId,
-        number: pr.number,
-        title: pr.title,
-        state: pr.state,
-        draft: pr.draft,
-        author_login: pr.author_login,
-        head_ref: pr.head_ref,
-        base_ref: pr.base_ref,
-        html_url: pr.html_url,
-        created_at: pr.created_at,
-        updated_at: pr.updated_at,
-        closed_at: pr.closed_at,
-        merged_at: pr.merged_at,
-        merged_by_login: pr.merged_by_login,
       });
-    });
+    }
     this.logger.log(`Synced ${prs.length} PRs for repo ${repoId}`);
   }
 
-  async syncActionRuns(owner: string, repo: string, repoId: number) {
+  async syncActionRuns(
+    owner: string,
+    repo: string,
+    repoId: number,
+  ): Promise<void> {
     const runs = await this.getActionRuns(owner, repo);
-    runs.forEach(async (run: any) => {
-      await this.dbService.upsertRun({
-        github_id: run.github_id,
+    for (const run of runs) {
+      this.dbService.upsertRun({
+        ...run,
         repo_id: repoId,
-        workflow_id: run.workflow_id,
-        workflow_name: run.workflow_name,
-        run_number: run.run_number,
-        event: run.event,
-        status: run.status,
-        conclusion: run.conclusion,
-        actor_login: run.actor_login,
-        head_branch: run.head_branch,
-        head_sha: run.head_sha,
-        html_url: run.html_url,
-        run_started_at: run.run_started_at,
-        updated_at: run.updated_at,
-        completed_at: run.completed_at,
       });
-    });
+    }
     this.logger.log(`Synced ${runs.length} Action runs for repo ${repoId}`);
   }
 }

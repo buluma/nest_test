@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post } from '@nestjs/common';
 import { PollerService } from './poller.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 

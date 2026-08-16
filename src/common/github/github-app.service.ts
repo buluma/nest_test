@@ -20,7 +20,7 @@ export class GithubAppService implements OnModuleInit {
       appId: config.appId,
       privateKey: config.privateKey,
     });
-    
+
     this.logger.log('GitHub App initialized');
   }
 
@@ -40,11 +40,13 @@ export class GithubAppService implements OnModuleInit {
   async getInstallationId(): Promise<number> {
     const octokit = this.getAppOctokit();
     const { data: installations } = await octokit.rest.apps.listInstallations();
-    
+
     if (installations.length === 0) {
-      throw new Error('No installations found for this GitHub App. Please install it on at least one repo/org.');
+      throw new Error(
+        'No installations found for this GitHub App. Please install it on at least one repo/org.',
+      );
     }
-    
+
     return installations[0].id;
   }
 

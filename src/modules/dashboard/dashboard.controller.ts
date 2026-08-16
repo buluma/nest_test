@@ -6,6 +6,8 @@ import * as path from 'path';
 export class DashboardController {
   @Get()
   getDashboard(@Res() res: Response) {
-    res.sendFile(path.join(process.cwd(), 'src', 'modules', 'dashboard', 'index.html'));
+    res.sendFile(
+      path.join(process.cwd(), 'src', 'modules', 'dashboard', 'index.html'),
+    );
   }
 }

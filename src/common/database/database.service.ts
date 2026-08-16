@@ -1,8 +1,13 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseGithubConfig } from '../config/github.config';
+import { RepoRow, PRRow, RunRow } from '../types/github';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
@@ -16,7 +21,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    this.dbPath = process.env.DATABASE_PATH || path.join(dataDir, 'github-dashboard.sqlite');
+    this.dbPath =
+      process.env.DATABASE_PATH ||
+      path.join(dataDir, 'github-dashboard.sqlite');
   }
 
   onModuleInit() {
@@ -30,11 +37,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private initialize(): void {
     this.logger.log(`Initializing database at ${this.dbPath}`);
     this.db = new Database(this.dbPath);
-    
+
     // Enable WAL mode for better concurrency
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
-    
+
     this.runMigrations();
     this.logger.log('Database initialized successfully');
   }
@@ -160,7 +167,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     updated_at: string;
   }): Database.RunResult {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       INSERT INTO repos (github_id, name, full_name, owner_login, private, html_url, updated_at, synced_at)
       VALUES (@github_id, @name, @full_name, @owner_login, @private, @html_url, @updated_at, datetime('now'))
       ON CONFLICT(github_id) DO UPDATE SET
@@ -171,45 +180,63 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         html_url = @html_url,
         updated_at = @updated_at,
         synced_at = datetime('now')
-    `).run({
-      ...repo,
-      private: repo.private ? 1 : 0,
-    });
+    `,
+      )
+      .run({
+        ...repo,
+        private: repo.private ? 1 : 0,
+      });
   }
 
-  getAllRepos(): Array<{ id: number; github_id: number; name: string; full_name: string; owner_login: string; private: number; html_url: string; updated_at: string }> {
+  getAllRepos(): RepoRow[] {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare('SELECT id, github_id, name, full_name, owner_login, private, html_url, updated_at FROM repos ORDER BY full_name').all() as any[];
+    return this.db
+      .prepare(
+        'SELECT id, github_id, name, full_name, owner_login, private, html_url, updated_at FROM repos ORDER BY full_name',
+      )
+      .all() as RepoRow[];
   }
 
   getRepoByGithubId(github_id: number): { id: number } | undefined {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare('SELECT id FROM repos WHERE github_id = ?').get(github_id) as any;
+    return this.db
+      .prepare('SELECT id FROM repos WHERE github_id = ?')
+      .get(github_id) as { id: number } | undefined;
   }
 
   getRepoByFullName(full_name: string): { id: number } | undefined {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare('SELECT id FROM repos WHERE full_name = ?').get(full_name) as any;
+    return this.db
+      .prepare('SELECT id FROM repos WHERE full_name = ?')
+      .get(full_name) as { id: number } | undefined;
   }
 
-  getPrById(id: number): any {
+  getPrById(id: number): PRRow | undefined {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       SELECT pr.*, r.full_name as repo_name, r.html_url as repo_url
       FROM pull_requests pr
       JOIN repos r ON pr.repo_id = r.id
       WHERE pr.id = ?
-    `).get(id);
+    `,
+      )
+      .get(id) as PRRow | undefined;
   }
 
-  getRunById(id: number): any {
+  getRunById(id: number): RunRow | undefined {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       SELECT ar.*, r.full_name as repo_name
       FROM action_runs ar
       JOIN repos r ON ar.repo_id = r.id
       WHERE ar.id = ?
-    `).get(id);
+    `,
+      )
+      .get(id) as RunRow | undefined;
   }
 
   // PR operations
@@ -231,7 +258,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     merged_by_login?: string | null;
   }): Database.RunResult {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       INSERT INTO pull_requests (github_id, repo_id, number, title, state, draft, author_login, head_ref, base_ref, html_url, created_at, updated_at, closed_at, merged_at, merged_by_login, synced_at)
       VALUES (@github_id, @repo_id, @number, @title, @state, @draft, @author_login, @head_ref, @base_ref, @html_url, @created_at, @updated_at, @closed_at, @merged_at, @merged_by_login, datetime('now'))
       ON CONFLICT(github_id) DO UPDATE SET
@@ -250,19 +279,23 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         merged_at = @merged_at,
         merged_by_login = @merged_by_login,
         synced_at = datetime('now')
-    `).run({
-      ...pr,
-      draft: pr.draft ? 1 : 0,
-    });
+    `,
+      )
+      .run({
+        ...pr,
+        draft: pr.draft ? 1 : 0,
+      });
   }
 
-  getPrs(filters: {
-    repo_id?: number;
-    state?: string;
-    since?: string;
-    limit?: number;
-    offset?: number;
-  } = {}): any[] {
+  getPrs(
+    filters: {
+      repo_id?: number;
+      state?: string;
+      since?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): PRRow[] {
     if (!this.db) throw new Error('Database not initialized');
     let query = `
       SELECT pr.*, r.full_name as repo_name, r.html_url as repo_url
@@ -270,7 +303,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       JOIN repos r ON pr.repo_id = r.id
       WHERE 1=1
     `;
-    const params: any = {};
+    const params: Record<string, unknown> = {};
 
     if (filters.repo_id) {
       query += ' AND pr.repo_id = @repo_id';
@@ -296,7 +329,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       params.offset = filters.offset;
     }
 
-    return this.db.prepare(query).all(params);
+    return this.db.prepare(query).all(params) as PRRow[];
   }
 
   // Action runs operations
@@ -318,7 +351,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     completed_at?: string | null;
   }): Database.RunResult {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       INSERT INTO action_runs (github_id, repo_id, workflow_id, workflow_name, run_number, event, status, conclusion, actor_login, head_branch, head_sha, html_url, run_started_at, updated_at, completed_at, synced_at)
       VALUES (@github_id, @repo_id, @workflow_id, @workflow_name, @run_number, @event, @status, @conclusion, @actor_login, @head_branch, @head_sha, @html_url, @run_started_at, @updated_at, @completed_at, datetime('now'))
       ON CONFLICT(github_id) DO UPDATE SET
@@ -337,17 +372,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updated_at = @updated_at,
         completed_at = @completed_at,
         synced_at = datetime('now')
-    `).run(run);
+    `,
+      )
+      .run(run);
   }
 
-  getRuns(filters: {
-    repo_id?: number;
-    status?: string;
-    conclusion?: string;
-    since?: string;
-    limit?: number;
-    offset?: number;
-  } = {}): any[] {
+  getRuns(
+    filters: {
+      repo_id?: number;
+      status?: string;
+      conclusion?: string;
+      since?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): RunRow[] {
     if (!this.db) throw new Error('Database not initialized');
     let query = `
       SELECT ar.*, r.full_name as repo_name
@@ -355,7 +394,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       JOIN repos r ON ar.repo_id = r.id
       WHERE 1=1
     `;
-    const params: any = {};
+    const params: Record<string, unknown> = {};
 
     if (filters.repo_id) {
       query += ' AND ar.repo_id = @repo_id';
@@ -385,7 +424,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       params.offset = filters.offset;
     }
 
-    return this.db.prepare(query).all(params);
+    return this.db.prepare(query).all(params) as RunRow[];
   }
 
   // Webhook events (audit)
@@ -397,9 +436,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     processing_error?: string | null;
   }): Database.RunResult {
     if (!this.db) throw new Error('Database not initialized');
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       INSERT OR IGNORE INTO webhook_events (github_delivery_id, event_type, action, payload, processing_error)
       VALUES (@github_delivery_id, @event_type, @action, @payload, @processing_error)
-    `).run(event);
+    `,
+      )
+      .run(event);
   }
 }

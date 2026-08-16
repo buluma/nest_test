@@ -23,7 +23,10 @@ const parseGithubConfig = () => {
   }
 
   const privateKey = fs.readFileSync(resolvedPath, 'utf-8');
-  if (!privateKey.includes('BEGIN RSA PRIVATE KEY') && !privateKey.includes('BEGIN PRIVATE KEY')) {
+  if (
+    !privateKey.includes('BEGIN RSA PRIVATE KEY') &&
+    !privateKey.includes('BEGIN PRIVATE KEY')
+  ) {
     throw new Error('Invalid private key format');
   }
 

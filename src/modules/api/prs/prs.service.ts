@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../../common/database/database.service';
+import { PRRow, PRDTO } from '../../../common/types/github';
 
 @Injectable()
 export class PrService {
   constructor(private readonly dbService: DatabaseService) {}
 
-  async getPRs(repoId?: number, state: string = 'all', since?: string) {
+  getPRs(repoId?: number, state: string = 'all', since?: string): PRRow[] {
     return this.dbService.getPrs({
       repo_id: repoId,
       state: state === 'all' ? undefined : state,
@@ -15,14 +16,14 @@ export class PrService {
     });
   }
 
-  async getPrById(id: number) {
+  getPrById(id: number): PRRow | undefined {
     return this.dbService.getPrById(id);
   }
 
-  async createPr(body: any) {
+  createPr(body: PRDTO): ReturnType<DatabaseService['upsertPr']> {
     return this.dbService.upsertPr({
       github_id: body.github_id,
-      repo_id: body.repo_id,
+      repo_id: body.repo_id!,
       number: body.number,
       title: body.title,
       state: body.state,
@@ -39,10 +40,10 @@ export class PrService {
     });
   }
 
-  async updatePr(id: number, body: any) {
+  updatePr(body: PRDTO): ReturnType<DatabaseService['upsertPr']> {
     return this.dbService.upsertPr({
       github_id: body.github_id,
-      repo_id: body.repo_id,
+      repo_id: body.repo_id!,
       number: body.number,
       title: body.title,
       state: body.state,
@@ -59,7 +60,7 @@ export class PrService {
     });
   }
 
-  async deletePr(id: number) {
+  deletePr(): { message: string } {
     return { message: 'Delete not fully implemented' };
   }
 }

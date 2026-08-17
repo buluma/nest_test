@@ -24,8 +24,8 @@ export class ReposController {
   }
 
   @Get(':id')
-  getRepoById(@Param('id') id: number) {
-    return this.repoService.getRepoById(id);
+  getRepoById(@Param('id') id: string) {
+    return this.repoService.getRepoById(Number(id));
   }
 
   @Post()

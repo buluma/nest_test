@@ -14,6 +14,11 @@ export class RepoService {
     return this.dbService.getRepoByGithubId(id);
   }
 
+  getRepoByNumericId(id: number): RepoRow | undefined {
+    if (!id) return undefined;
+    return this.dbService.getAllRepos().find((repo) => repo.id === id);
+  }
+
   createRepo(body: RepoDTO): ReturnType<DatabaseService['upsertRepo']> {
     return this.dbService.upsertRepo({
       github_id: body.github_id,
@@ -22,6 +27,7 @@ export class RepoService {
       owner_login: body.owner_login,
       private: body.private,
       html_url: body.html_url,
+      language: body.language ?? null,
       updated_at: body.updated_at,
     });
   }
@@ -34,6 +40,7 @@ export class RepoService {
       owner_login: body.owner_login,
       private: body.private,
       html_url: body.html_url,
+      language: body.language ?? null,
       updated_at: body.updated_at,
     });
   }

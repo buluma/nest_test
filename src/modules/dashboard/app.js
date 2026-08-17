@@ -1,302 +1,496 @@
-// Dashboard JavaScript - fetches data from API and renders UI
 document.addEventListener('DOMContentLoaded', () => {
-    const timeWindowSelect = document.getElementById('timeWindow');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const lastUpdatedSpan = document.getElementById('lastUpdated');
-    const reposList = document.getElementById('repos-list');
-    const prsList = document.getElementById('prs-list');
-    const runsList = document.getElementById('runs-list');
-    const reposCount = document.getElementById('repos-count');
-    const prsCount = document.getElementById('prs-count');
-    const runsCount = document.getElementById('runs-count');
-    const prStateFilter = document.getElementById('prStateFilter');
-    const prRepoFilter = document.getElementById('prRepoFilter');
-    const runStatusFilter = document.getElementById('runStatusFilter');
-    const runRepoFilter = document.getElementById('runRepoFilter');
+  const state = {
+    repos: [],
+    prs: [],
+    runs: [],
+    issues: [],
+    commits: [],
+    summary: null,
+    selectedRepoId: '',
+    loading: false,
+    repoScopeLoading: false,
+    filters: {
+      search: '',
+      visibility: 'all',
+      language: 'all',
+      ci: 'all',
+      prState: 'all',
+      prRepoId: '',
+      runStatus: 'all',
+      runRepoId: '',
+    },
+  };
 
-    // Time window presets -> milliseconds
-    const WINDOWS = {
-        '1h': 60 * 60 * 1000,
-        '24h': 24 * 60 * 60 * 1000,
-        '7d': 7 * 24 * 60 * 60 * 1000,
-        '30d': 30 * 24 * 60 * 60 * 1000,
-    };
+  const els = {
+    repoSearch: document.getElementById('repoSearch'),
+    visibilityFilter: document.getElementById('visibilityFilter'),
+    languageFilter: document.getElementById('languageFilter'),
+    ciFilter: document.getElementById('ciFilter'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    reposList: document.getElementById('repos-list'),
+    prsList: document.getElementById('prs-list'),
+    issuesList: document.getElementById('issues-list'),
+    commitsList: document.getElementById('commits-list'),
+    failuresList: document.getElementById('failures-list'),
+    billingContent: document.getElementById('billing-content'),
+    activeRepoCount: document.getElementById('activeRepoCount'),
+    allRepoCount: document.getElementById('allRepoCount'),
+    privateRepoCount: document.getElementById('privateRepoCount'),
+    prsCount: document.getElementById('prs-count'),
+    issuesCount: document.getElementById('issues-count'),
+    commitsCount: document.getElementById('commits-count'),
+    billingPeriod: document.getElementById('billing-period'),
+    billingBilled: document.getElementById('billing-billed'),
+    billingGross: document.getElementById('billing-gross'),
+    billingCovered: document.getElementById('billing-covered'),
+    billingMinutes: document.getElementById('billing-minutes'),
+    billingStorage: document.getElementById('billing-storage'),
+    billingLinux: document.getElementById('billing-linux'),
+    billingMacos: document.getElementById('billing-macos'),
+    summaryLine: document.getElementById('lastUpdated'),
+    summaryStats: document.getElementById('summary-stats'),
+    failuresSubtitle: document.getElementById('failures-subtitle'),
+    summaryLanguageCount: document.getElementById('summary-language-count'),
+    summaryFailureCount: document.getElementById('summary-failure-count'),
+    selectedRepoLabel: document.getElementById('selected-repo-label'),
+    prStateTabs: document.querySelectorAll('[data-pr-state]'),
+    prRepoFilter: document.getElementById('prRepoFilter'),
+    runRepoFilter: document.getElementById('runRepoFilter'),
+    runStatusFilter: document.getElementById('runStatusFilter'),
+    lastUpdated: document.getElementById('lastUpdated'),
+  };
 
-    // Compute the `since` ISO timestamp for the selected window
-    function getSince() {
-        const ms = WINDOWS[timeWindowSelect.value];
-        if (!ms) return undefined;
-        return new Date(Date.now() - ms).toISOString();
+  const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  const relativeFormatter = new Intl.RelativeTimeFormat(undefined, {
+    numeric: 'auto',
+  });
+
+  function escapeHtml(value = '') {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+
+  function formatDate(value) {
+    if (!value) return 'Unknown';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Unknown' : timeFormatter.format(date);
+  }
+
+  function formatRelative(value) {
+    if (!value) return 'Unknown';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Unknown';
+    const diff = date.getTime() - Date.now();
+    const minutes = Math.round(diff / 60000);
+    const hours = Math.round(diff / 3600000);
+    const days = Math.round(diff / 86400000);
+    const absMinutes = Math.abs(minutes);
+    const absHours = Math.abs(hours);
+    const absDays = Math.abs(days);
+    if (absMinutes < 60) return relativeFormatter.format(minutes, 'minute');
+    if (absHours < 24) return relativeFormatter.format(hours, 'hour');
+    return relativeFormatter.format(days, 'day');
+  }
+
+  function repoPrivate(repo) {
+    return repo.private === true || repo.private === 1;
+  }
+
+  function repoKey(repo) {
+    return String(repo.id);
+  }
+
+  function runSeverity(run) {
+    const conclusion = String(run.conclusion || '').toLowerCase();
+    const status = String(run.status || '').toLowerCase();
+    if (['failure', 'timed_out', 'cancelled'].includes(conclusion)) return 'failed';
+    if (['queued', 'pending', 'requested', 'waiting'].includes(conclusion) || ['queued', 'in_progress', 'requested', 'waiting'].includes(status)) return 'running';
+    if (['success', 'completed'].includes(conclusion) || ['completed'].includes(status)) return 'success';
+    if (conclusion === 'neutral' || conclusion === 'skipped') return 'neutral';
+    return conclusion || status || 'neutral';
+  }
+
+  function repoStatus(repo) {
+    const repoRuns = state.runs.filter((run) => String(run.repo_id) === String(repo.id));
+    const latestRun = repoRuns[0];
+    if (!latestRun) return { label: 'Active', className: 'active' };
+    const severity = runSeverity(latestRun);
+    if (severity === 'failed') return { label: 'Failed', className: 'failed' };
+    if (severity === 'running') return { label: 'Running', className: 'running' };
+    if (severity === 'success') return { label: 'Active', className: 'active' };
+    return { label: severity, className: severity };
+  }
+
+  function emptyState(title, subtitle) {
+    return `
+      <div class="empty-state">
+        <div class="empty-state-mark"></div>
+        <div class="empty-state-title">${escapeHtml(title)}</div>
+        <div class="empty-state-subtitle">${escapeHtml(subtitle)}</div>
+      </div>
+    `;
+  }
+
+  function loadingState(lines = 3) {
+    return `
+      <div class="loading-state" aria-busy="true" aria-live="polite">
+        ${Array.from({ length: lines }, (_, idx) => `<div class="skeleton skeleton-${idx + 1}"></div>`).join('')}
+      </div>
+    `;
+  }
+
+  function selectedRepos() {
+    return state.repos.filter((repo) => {
+      const search = state.filters.search.trim().toLowerCase();
+      const visibility = state.filters.visibility;
+      const language = state.filters.language;
+      const ci = state.filters.ci;
+      const repoRuns = state.runs.filter((run) => String(run.repo_id) === String(repo.id));
+      const latestRun = repoRuns[0];
+      const ciState = latestRun ? runSeverity(latestRun) : 'unknown';
+
+      if (search) {
+        const text = [repo.name, repo.full_name, repo.owner_login, repo.html_url].join(' ').toLowerCase();
+        if (!text.includes(search)) return false;
+      }
+      if (visibility !== 'all' && ((visibility === 'private') !== repoPrivate(repo))) return false;
+      if (language !== 'all' && String(repo.language || '').toLowerCase() !== language) return false;
+      if (ci !== 'all' && ci !== ciState) return false;
+      return true;
+    });
+  }
+
+  function renderRepoFilters() {
+    const prValue = els.prRepoFilter.value;
+    const runValue = els.runRepoFilter.value;
+    const languageValue = els.languageFilter.value;
+    const languages = Array.from(
+      new Set(
+        state.repos
+          .map((repo) => String(repo.language || '').trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+    els.languageFilter.innerHTML = ['<option value="all">All languages</option>']
+      .concat(languages.map((language) => `<option value="${escapeHtml(language)}">${escapeHtml(language)}</option>`))
+      .join('');
+    els.languageFilter.value = languageValue || 'all';
+    const options = ['<option value="">All Repositories</option>']
+      .concat(state.repos.map((repo) => `<option value="${repoKey(repo)}">${escapeHtml(repo.full_name)}</option>`))
+      .join('');
+    els.prRepoFilter.innerHTML = options;
+    els.runRepoFilter.innerHTML = options;
+    els.prRepoFilter.value = prValue;
+    els.runRepoFilter.value = runValue;
+  }
+
+  function renderRepos() {
+    const repos = selectedRepos();
+    const summary = state.summary;
+    const activeCount = summary?.active_repo_count ?? repos.filter((repo) => repoStatus(repo).className !== 'failed').length;
+    const privateCount = summary?.private_repo_count ?? state.repos.filter(repoPrivate).length;
+    els.activeRepoCount.textContent = String(activeCount);
+    els.allRepoCount.textContent = String(summary?.repo_count ?? state.repos.length);
+    els.privateRepoCount.textContent = String(privateCount);
+
+    if (!repos.length) {
+      els.reposList.innerHTML = emptyState('No repositories match the current filters', 'Adjust search or filters to show more repositories');
+      return;
     }
 
-    // Safe date formatting
-    function formatDate(dateStr) {
-        if (!dateStr) return 'N/A';
-        try {
-            const dateObj = new Date(dateStr);
-            if (!isNaN(dateObj.getTime())) {
-                return dateObj.toLocaleString();
-            }
-        } catch (e) {}
-        return dateStr;
+    if (summary) {
+      els.summaryLanguageCount.textContent = `${summary.language_count ?? 0} languages`;
+      els.summaryFailureCount.textContent = `${summary.failure_count ?? 0} failures`;
     }
 
-    function formatRelativeTime(dateStr) {
-        if (!dateStr) return 'Unknown';
-        try {
-            const date = new Date(dateStr);
-            if (isNaN(date.getTime())) return dateStr;
-            const now = new Date();
-            const diffMs = now - date;
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffDays = Math.floor(diffMs / 86400000);
+    els.reposList.innerHTML = repos.map((repo) => {
+      const status = repoStatus(repo);
+      const visibility = repoPrivate(repo) ? 'PRIVATE' : 'PUBLIC';
+      const isSelected = state.selectedRepoId === repoKey(repo);
+      const latestRun = state.runs.find((run) => String(run.repo_id) === String(repo.id));
+      return `
+        <button class="repo-row ${isSelected ? 'is-selected' : ''}" data-repo-id="${repoKey(repo)}" type="button" aria-pressed="${isSelected}">
+          <span class="repo-status repo-status-${status.className}"></span>
+          <span class="repo-main">
+            <span class="repo-name">${escapeHtml(repo.name)}</span>
+            <span class="repo-fullname">${escapeHtml(repo.full_name)} · ${escapeHtml(repo.owner_login || 'unknown')} · updated ${escapeHtml(formatRelative(repo.updated_at))}</span>
+          </span>
+          <span class="repo-meta">
+            <span class="repo-badge">${visibility}</span>
+            <span class="repo-count">${escapeHtml(String((state.prs.filter((pr) => String(pr.repo_id) === String(repo.id))).length))} PRs</span>
+            ${latestRun ? `<span class="repo-run">${escapeHtml(formatRelative(latestRun.updated_at))}</span>` : ''}
+          </span>
+        </button>
+      `;
+    }).join('');
 
-            if (diffMins < 1) return 'Just now';
-            if (diffMins < 60) return `${diffMins}m ago`;
-            if (diffHours < 24) return `${diffHours}h ago`;
-            if (diffDays < 7) return `${diffDays}d ago`;
-            return date.toLocaleDateString();
-        } catch (e) {
-            return dateStr;
-        }
+    if (els.selectedRepoLabel) {
+      const selected = state.repos.find((repo) => repoKey(repo) === state.selectedRepoId) || state.repos[0];
+      els.selectedRepoLabel.textContent = selected ? selected.full_name : 'No repository selected';
     }
+  }
 
-    function createEmptyState(icon, text, subtext) {
-        return `
-            <div class="empty-state">
-                <div class="empty-state-icon">${icon}</div>
-                <div class="empty-state-text">${text}</div>
-                <div class="empty-state-subtext">${subtext}</div>
+  function currentPrs() {
+    return state.prs.filter((pr) => {
+      if (state.selectedRepoId && String(pr.repo_id) !== state.selectedRepoId) return false;
+      if (state.filters.prState !== 'all' && pr.state !== state.filters.prState) return false;
+      if (state.filters.prRepoId && String(pr.repo_id) !== state.filters.prRepoId) return false;
+      return true;
+    });
+  }
+
+  function renderPRs() {
+    const prs = currentPrs();
+    els.prsCount.textContent = String(prs.length);
+    if (!prs.length) {
+      els.prsList.innerHTML = state.loading ? loadingState(2) : emptyState('No recent pull requests', 'No pull requests match the current filters');
+      return;
+    }
+    els.prsList.innerHTML = prs.map((pr) => `
+      <article class="compact-row">
+        <div class="compact-row-main">
+          <div class="compact-title">
+            <a href="${escapeHtml(pr.html_url)}" target="_blank" rel="noreferrer">#${escapeHtml(String(pr.number))} ${escapeHtml(pr.title)}</a>
+          </div>
+          <div class="compact-subtitle">
+            ${escapeHtml(pr.repo_name || 'Unknown repo')} · ${escapeHtml(pr.author_login || 'unknown')} · ${escapeHtml(pr.head_ref || '')} → ${escapeHtml(pr.base_ref || '')}
+          </div>
+        </div>
+        <div class="compact-row-meta">
+          <span class="state-badge state-${escapeHtml((pr.draft ? 'draft' : pr.state || 'unknown').toLowerCase())}">${pr.draft ? 'DRAFT' : escapeHtml(String(pr.state || 'unknown').toUpperCase())}</span>
+          <span class="age">${escapeHtml(formatRelative(pr.updated_at))}</span>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  function renderIssues() {
+    els.issuesCount.textContent = String(state.issues.length);
+    if (state.repoScopeLoading) {
+      els.issuesList.innerHTML = loadingState(2);
+      return;
+    }
+    if (!state.issues.length) {
+      els.issuesList.innerHTML = state.loading ? loadingState(2) : emptyState('No recent issues', 'No issues match the selected repository');
+      return;
+    }
+    els.issuesList.innerHTML = state.issues.map((issue) => `
+      <article class="compact-row">
+        <div class="compact-row-main">
+          <div class="compact-title">
+            <a href="${escapeHtml(issue.html_url)}" target="_blank" rel="noreferrer">#${escapeHtml(String(issue.number))} ${escapeHtml(issue.title)}</a>
+          </div>
+          <div class="compact-subtitle">
+            ${escapeHtml(issue.repo_name || 'Unknown repo')} · ${escapeHtml(issue.author_login || 'unknown')}
+          </div>
+        </div>
+        <div class="compact-row-meta">
+          <span class="state-badge state-${escapeHtml(String(issue.state || 'unknown').toLowerCase())}">${escapeHtml(String(issue.state || 'unknown').toUpperCase())}</span>
+          <span class="age">${escapeHtml(formatRelative(issue.updated_at))}</span>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  function renderCommits() {
+    els.commitsCount.textContent = String(state.commits.length);
+    if (state.repoScopeLoading) {
+      els.commitsList.innerHTML = loadingState(2);
+      return;
+    }
+    if (!state.commits.length) {
+      els.commitsList.innerHTML = state.loading ? loadingState(2) : emptyState('No recent commits', 'No commits match the selected repository');
+      return;
+    }
+    els.commitsList.innerHTML = state.commits.map((commit) => `
+      <article class="compact-row">
+        <div class="compact-row-main">
+          <div class="compact-title">
+            <a href="${escapeHtml(commit.html_url)}" target="_blank" rel="noreferrer">${escapeHtml(commit.message.split('\n')[0])}</a>
+          </div>
+          <div class="compact-subtitle">
+            ${escapeHtml(commit.repo_name || 'Unknown repo')} · ${escapeHtml(commit.author_login || 'unknown')} · ${escapeHtml(commit.sha.slice(0, 7))}
+          </div>
+        </div>
+        <div class="compact-row-meta">
+          <span class="state-badge state-neutral">COMMIT</span>
+          <span class="age">${escapeHtml(formatRelative(commit.committed_at))}</span>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  function currentRuns() {
+    return state.runs.filter((run) => {
+      if (state.selectedRepoId && String(run.repo_id) !== state.selectedRepoId) return false;
+      if (state.filters.runStatus !== 'all') {
+        const severity = runSeverity(run);
+        if (severity !== state.filters.runStatus) return false;
+      }
+      if (state.filters.runRepoId && String(run.repo_id) !== state.filters.runRepoId) return false;
+      const ci = state.filters.ci;
+      if (ci !== 'all' && runSeverity(run) !== ci) return false;
+      return true;
+    });
+  }
+
+  function renderRuns() {
+    const runs = currentRuns().filter((run) => runSeverity(run) !== 'success');
+    if (state.summary && els.failuresSubtitle) {
+      els.failuresSubtitle.textContent = `${state.summary.failure_count ?? 0} recent non-green runs`;
+    }
+    els.failuresList.innerHTML = runs.length ? runs.map((run) => {
+      const severity = runSeverity(run);
+      const repo = state.repos.find((item) => String(item.id) === String(run.repo_id));
+      return `
+        <article class="compact-row compact-row-run">
+          <div class="compact-row-main">
+            <div class="compact-title">${escapeHtml(run.workflow_name || 'Unknown workflow')}</div>
+            <div class="compact-subtitle">
+              ${escapeHtml(repo?.name || run.repo_name || 'Unknown repo')} · ${escapeHtml(run.head_branch || 'unknown')} · #${escapeHtml(String(run.run_number || '—'))} · ${escapeHtml(run.display_title || '')}
             </div>
-        `;
+          </div>
+          <div class="compact-row-meta">
+            <span class="state-badge state-${escapeHtml(severity)}">${escapeHtml(severity.toUpperCase())}</span>
+            <span class="age">${escapeHtml(formatRelative(run.updated_at))}</span>
+          </div>
+        </article>
+      `;
+    }).join('') : state.loading ? loadingState(3) : emptyState('No non-green runs', 'Workflow failures and other non-green runs will appear here');
+  }
+
+  function renderBilling() {
+    els.billingPeriod.textContent = 'Billing unavailable';
+    els.billingContent.innerHTML = state.loading ? loadingState(4) : `
+      <div class="billing-row">
+        <span class="billing-label">GitHub Actions Billing</span>
+        <span class="billing-value billing-muted">Unavailable from backend</span>
+      </div>
+      <div class="billing-divider"></div>
+      <div class="billing-row">
+        <span class="billing-label">Runner minutes</span>
+        <span class="billing-value billing-muted">—</span>
+      </div>
+      <div class="billing-row">
+        <span class="billing-label">Storage GB-hours</span>
+        <span class="billing-value billing-muted">—</span>
+      </div>
+    `;
+  }
+
+  function renderAll() {
+    renderRepoFilters();
+    renderRepos();
+    renderPRs();
+    renderIssues();
+    renderCommits();
+    renderRuns();
+    renderBilling();
+    const lastSyncedAt = state.summary?.last_synced_at;
+    els.summaryLine.textContent = lastSyncedAt
+      ? `Last synced ${formatDate(lastSyncedAt)}`
+      : `Last updated ${new Date().toLocaleTimeString()}`;
+    const summary = state.summary;
+    if (summary && els.summaryStats) {
+      els.summaryStats.textContent = `${summary.repo_count ?? 0} repos · ${summary.pr_count ?? 0} PRs · ${summary.run_count ?? 0} runs`;
     }
+  }
 
-    // Load repos and populate repo filter dropdowns
-    async function loadRepos() {
-        try {
-            const response = await fetch('/repos');
-            const repos = await response.json();
-
-            reposCount.textContent = repos.length;
-
-            // Render repo cards
-            if (repos.length === 0) {
-                reposList.innerHTML = createEmptyState('📦', 'No repositories', 'No GitHub repositories found');
-                return;
-            }
-
-            reposList.innerHTML = '';
-            repos.forEach(repo => {
-                const repoEl = document.createElement('div');
-                repoEl.className = 'repo-card';
-                const isPrivate = repo.private === 1 || repo.private === true;
-                const visibilityClass = isPrivate ? 'private' : 'public';
-                const visibilityText = isPrivate ? 'Private' : 'Public';
-
-                // Validate date parsing
-                let dateStr = 'Unknown';
-                try {
-                    const dateObj = new Date(repo.updated_at);
-                    if (!isNaN(dateObj.getTime())) {
-                        dateStr = dateObj.toLocaleString();
-                    }
-                } catch (e) {
-                    console.warn('Invalid date format for repo:', repo.updated_at, e);
-                }
-
-                repoEl.innerHTML = `
-                    <div class="repo-header">
-                        <h3 class="repo-name">${repo.name}</h3>
-                        <span class="repo-visibility ${visibilityClass}">${visibilityText}</span>
-                    </div>
-                    <div class="repo-meta">
-                        <div class="repo-meta-item">
-                            <span class="repo-meta-label">Owner:</span>
-                            <span class="repo-meta-value">${repo.owner_login}</span>
-                        </div>
-                        <div class="repo-meta-item">
-                            <span class="repo-meta-label">Full Name:</span>
-                            <span class="repo-meta-value">${repo.full_name}</span>
-                        </div>
-                        <div class="repo-meta-item">
-                            <span class="repo-meta-label">URL:</span>
-                            <a href="${repo.html_url}" target="_blank" class="repo-meta-value repo-link">${repo.html_url}</a>
-                        </div>
-                    </div>
-                    <div class="repo-updated">
-                        Updated: ${dateStr} · ${formatRelativeTime(repo.updated_at)}
-                    </div>
-                `;
-                reposList.appendChild(repoEl);
-            });
-
-            // Populate repo filter dropdowns
-            [prRepoFilter, runRepoFilter].forEach(select => {
-                const current = select.value;
-                select.innerHTML = '<option value="">All Repos</option>';
-                repos.forEach(repo => {
-                    const opt = document.createElement('option');
-                    opt.value = repo.id;
-                    opt.textContent = repo.full_name;
-                    select.appendChild(opt);
-                });
-                select.value = current;
-            });
-        } catch (error) {
-            console.error('Error loading repos:', error);
-            reposList.innerHTML = createEmptyState('⚠️', 'Error loading repositories', 'Check console for details');
-        }
+  async function loadRepoScopedData(repoId) {
+    if (!repoId) {
+      state.issues = [];
+      state.commits = [];
+      state.repoScopeLoading = false;
+      renderIssues();
+      renderCommits();
+      return;
     }
+    state.repoScopeLoading = true;
+    renderIssues();
+    renderCommits();
+    const [issuesRes, commitsRes] = await Promise.all([
+      fetch(`/issues?repoId=${encodeURIComponent(repoId)}`),
+      fetch(`/commits?repoId=${encodeURIComponent(repoId)}`),
+    ]);
+    state.issues = (await issuesRes.json()).slice().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    state.commits = (await commitsRes.json()).slice().sort((a, b) => new Date(b.committed_at).getTime() - new Date(a.committed_at).getTime());
+    state.repoScopeLoading = false;
+    renderIssues();
+    renderCommits();
+  }
 
-    // Load PRs
-    async function loadPRs() {
-        try {
-            const params = new URLSearchParams();
-            if (prRepoFilter.value) params.append('repoId', prRepoFilter.value);
-            if (prStateFilter.value && prStateFilter.value !== 'all') params.append('state', prStateFilter.value);
-            const since = getSince();
-            if (since) params.append('since', since);
+  async function loadData() {
+    state.loading = true;
+    renderAll();
+    const [summaryRes, reposRes, prsRes, runsRes] = await Promise.all([
+      fetch('/dashboard/summary'),
+      fetch('/repos'),
+      fetch(`/prs?state=${encodeURIComponent(state.filters.prState)}${state.filters.prRepoId ? `&repoId=${encodeURIComponent(state.filters.prRepoId)}` : ''}`),
+      fetch(`/runs?status=${encodeURIComponent(state.filters.runStatus)}${state.filters.runRepoId ? `&repoId=${encodeURIComponent(state.filters.runRepoId)}` : ''}&limit=100`),
+    ]);
 
-            const response = await fetch(`/prs?${params.toString()}`);
-            const prs = await response.json();
-
-            prsCount.textContent = prs.length;
-
-            if (prs.length === 0) {
-                prsList.innerHTML = createEmptyState('🔀', 'No pull requests', 'No PRs match the current filters');
-                return;
-            }
-
-            prsList.innerHTML = '';
-            prs.forEach(pr => {
-                const prEl = document.createElement('div');
-                prEl.className = 'pr-card';
-
-                const state = (pr.state || 'unknown').toLowerCase();
-                const stateLabel = state === 'open' ? 'Open' : state === 'closed' ? 'Closed' : state === 'merged' ? 'Merged' : state;
-
-                prEl.innerHTML = `
-                    <h4 class="pr-title"><a href="${pr.html_url}" target="_blank">${pr.title}</a></h4>
-                    <div class="pr-meta">
-                        <span class="pr-meta-item">
-                            <span class="pr-meta-label">Repo:</span>
-                            <span class="pr-meta-value">${pr.repo_name || 'Unknown'}</span>
-                        </span>
-                        <span class="pr-meta-item">
-                            <span class="pr-meta-label">#${pr.number}</span>
-                        </span>
-                        <span class="pr-meta-item">
-                            <span class="pr-state ${state}">${stateLabel}</span>
-                        </span>
-                        <span class="pr-meta-item">
-                            <span class="pr-meta-label">Author:</span>
-                            <span class="pr-meta-value">${pr.author_login}</span>
-                        </span>
-                        <span class="pr-meta-item">
-                            <span class="pr-meta-label">Branch:</span>
-                            <span class="pr-meta-value">${pr.head_ref} → ${pr.base_ref}</span>
-                        </span>
-                    </div>
-                    <div class="pr-dates">
-                        <span>Created: ${formatDate(pr.created_at)}</span>
-                        <span>Updated: ${formatDate(pr.updated_at)}</span>
-                        ${pr.closed_at ? `<span>Closed: ${formatDate(pr.closed_at)}</span>` : ''}
-                        ${pr.merged_at ? `<span>Merged: ${formatDate(pr.merged_at)}</span>` : ''}
-                    </div>
-                `;
-                prsList.appendChild(prEl);
-            });
-        } catch (error) {
-            console.error('Error loading PRs:', error);
-            prsList.innerHTML = createEmptyState('⚠️', 'Error loading PRs', 'Check console for details');
-        }
+    state.summary = await summaryRes.json();
+    state.repos = (await reposRes.json()).slice().sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)));
+    state.prs = (await prsRes.json()).slice().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    state.runs = (await runsRes.json()).slice().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    if (!state.selectedRepoId && state.repos[0]) {
+      state.selectedRepoId = repoKey(state.repos[0]);
     }
+    state.loading = false;
 
-    // Load runs
-    async function loadRuns() {
-        try {
-            const params = new URLSearchParams();
-            if (runRepoFilter.value) params.append('repoId', runRepoFilter.value);
-            if (runStatusFilter.value && runStatusFilter.value !== 'all') params.append('status', runStatusFilter.value);
-            const since = getSince();
-            if (since) params.append('since', since);
+    renderAll();
+    await loadRepoScopedData(state.selectedRepoId || repoKey(state.repos[0]));
+  }
 
-            const response = await fetch(`/runs?${params.toString()}`);
-            const runs = await response.json();
+  function updateFilters(next) {
+    Object.assign(state.filters, next);
+    loadData().catch((err) => console.error(err));
+  }
 
-            runsCount.textContent = runs.length;
+  els.repoSearch.addEventListener('input', (event) => {
+    state.filters.search = event.target.value;
+    renderRepos();
+  });
+  els.visibilityFilter.addEventListener('change', (event) => updateFilters({ visibility: event.target.value }));
+  els.languageFilter.addEventListener('change', (event) => updateFilters({ language: event.target.value }));
+  els.ciFilter.addEventListener('change', (event) => updateFilters({ ci: event.target.value }));
+  els.refreshBtn.addEventListener('click', () => loadData().catch((err) => console.error(err)));
+  els.prStateTabs.forEach((tab) => tab.addEventListener('click', () => {
+    els.prStateTabs.forEach((item) => item.classList.toggle('is-active', item === tab));
+    updateFilters({ prState: tab.dataset.prState });
+  }));
+  els.prRepoFilter.addEventListener('change', (event) => updateFilters({ prRepoId: event.target.value }));
+  els.runRepoFilter.addEventListener('change', (event) => updateFilters({ runRepoId: event.target.value }));
+  els.runStatusFilter.addEventListener('change', (event) => updateFilters({ runStatus: event.target.value }));
 
-            if (runs.length === 0) {
-                runsList.innerHTML = createEmptyState('⚙️', 'No action runs', 'No workflow runs match the current filters');
-                return;
-            }
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-repo-id]');
+    if (!button) return;
+    const repoId = button.dataset.repoId;
+    state.selectedRepoId = repoId;
+    state.filters.prRepoId = repoId;
+    state.filters.runRepoId = repoId;
+    els.prRepoFilter.value = repoId;
+    els.runRepoFilter.value = repoId;
+    renderAll();
+    loadRepoScopedData(repoId).catch((err) => {
+      state.repoScopeLoading = false;
+      console.error(err);
+      renderIssues();
+      renderCommits();
+    });
+  });
 
-            runsList.innerHTML = '';
-            runs.forEach(run => {
-                const runEl = document.createElement('div');
-                runEl.className = 'run-card';
-
-                const conclusion = (run.conclusion || run.status || 'unknown').toLowerCase();
-                const conclusionLabel = conclusion.charAt(0).toUpperCase() + conclusion.slice(1).replace('_', ' ');
-
-                runEl.innerHTML = `
-                    <div class="run-header">
-                        <h4 class="run-workflow"><a href="${run.html_url}" target="_blank">${run.workflow_name || 'Unknown Workflow'}</a></h4>
-                        <span class="run-conclusion ${conclusion}">${conclusionLabel}</span>
-                    </div>
-                    <div class="run-meta">
-                        <div class="run-meta-item">
-                            <span class="run-meta-label">Repo:</span>
-                            <span class="run-meta-value">${run.repo_name || 'Unknown'}</span>
-                        </div>
-                        <div class="run-meta-item">
-                            <span class="run-meta-label">Run:</span>
-                            <span class="run-meta-value">#${run.run_number}</span>
-                        </div>
-                        <div class="run-meta-item">
-                            <span class="run-meta-label">Branch:</span>
-                            <span class="run-meta-value run-branch">${run.head_branch || 'N/A'}</span>
-                        </div>
-                        <div class="run-meta-item">
-                            <span class="run-meta-label">Commit:</span>
-                            <span class="run-meta-value run-sha">${run.head_sha ? run.head_sha.substring(0, 7) : 'N/A'}</span>
-                        </div>
-                    </div>
-                    <div class="run-dates">
-                        <span>Started: ${formatDate(run.run_started_at)}</span>
-                        <span>Updated: ${formatDate(run.updated_at)}</span>
-                        ${run.completed_at ? `<span>Completed: ${formatDate(run.completed_at)}</span>` : ''}
-                    </div>
-                `;
-                runsList.appendChild(runEl);
-            });
-        } catch (error) {
-            console.error('Error loading runs:', error);
-            runsList.innerHTML = createEmptyState('⚠️', 'Error loading runs', 'Check console for details');
-        }
-    }
-
-    // Load all dashboard data
-    async function loadDashboardData() {
-        lastUpdatedSpan.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
-        try {
-            await loadRepos();
-            await loadPRs();
-            await loadRuns();
-        } catch (error) {
-            console.error('Error loading dashboard data:', error);
-        }
-    }
-
-    // Event listeners
-    refreshBtn.addEventListener('click', loadDashboardData);
-    timeWindowSelect.addEventListener('change', () => { loadPRs(); loadRuns(); });
-    prStateFilter.addEventListener('change', loadPRs);
-    prRepoFilter.addEventListener('change', loadPRs);
-    runStatusFilter.addEventListener('change', loadRuns);
-    runRepoFilter.addEventListener('change', loadRuns);
-
-    // Initial load
-    loadDashboardData();
+  loadData().catch((err) => {
+    console.error('Failed to load dashboard data', err);
+    els.reposList.innerHTML = emptyState('Unable to load dashboard', 'Check the API connection and reload the page');
+  });
 });

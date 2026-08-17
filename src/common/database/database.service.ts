@@ -60,6 +60,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         owner_login TEXT NOT NULL,
         private INTEGER NOT NULL DEFAULT 0,
         html_url TEXT NOT NULL,
+        language TEXT,
         updated_at TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         synced_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -130,6 +131,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     for (const migration of migrations) {
       this.db.exec(migration);
     }
+
+    const repoColumns = this.db.prepare(`PRAGMA table_info(repos)`).all() as Array<{ name: string }>;
+    if (!repoColumns.some((column) => column.name === 'language')) {
+      this.db.exec(`ALTER TABLE repos ADD COLUMN language TEXT;`);
+    }
   }
 
   getDb(): Database.Database {
@@ -164,20 +170,22 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     owner_login: string;
     private: boolean;
     html_url: string;
+    language?: string | null;
     updated_at: string;
   }): Database.RunResult {
     if (!this.db) throw new Error('Database not initialized');
     return this.db
       .prepare(
         `
-      INSERT INTO repos (github_id, name, full_name, owner_login, private, html_url, updated_at, synced_at)
-      VALUES (@github_id, @name, @full_name, @owner_login, @private, @html_url, @updated_at, datetime('now'))
+      INSERT INTO repos (github_id, name, full_name, owner_login, private, html_url, language, updated_at, synced_at)
+      VALUES (@github_id, @name, @full_name, @owner_login, @private, @html_url, @language, @updated_at, datetime('now'))
       ON CONFLICT(github_id) DO UPDATE SET
         name = @name,
         full_name = @full_name,
         owner_login = @owner_login,
         private = @private,
         html_url = @html_url,
+        language = @language,
         updated_at = @updated_at,
         synced_at = datetime('now')
     `,
@@ -192,9 +200,83 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!this.db) throw new Error('Database not initialized');
     return this.db
       .prepare(
-        'SELECT id, github_id, name, full_name, owner_login, private, html_url, updated_at FROM repos ORDER BY full_name',
+        'SELECT id, github_id, name, full_name, owner_login, private, html_url, language, updated_at FROM repos ORDER BY full_name',
       )
       .all() as RepoRow[];
+  }
+
+  getLastSyncedAt(): string | null {
+    if (!this.db) throw new Error('Database not initialized');
+    const row = this.db
+      .prepare(
+        `
+        SELECT MAX(synced_at) as last_synced_at
+        FROM (
+          SELECT synced_at FROM repos
+          UNION ALL
+          SELECT synced_at FROM pull_requests
+          UNION ALL
+          SELECT synced_at FROM action_runs
+        )
+      `,
+      )
+      .get() as { last_synced_at: string | null } | undefined;
+    return row?.last_synced_at ?? null;
+  }
+
+  getDashboardSummary(): {
+    repo_count: number;
+    private_repo_count: number;
+    public_repo_count: number;
+    active_repo_count: number;
+    pr_count: number;
+    issue_count: number;
+    commit_count: number;
+    run_count: number;
+    failure_count: number;
+    language_count: number;
+    last_synced_at: string | null;
+  } {
+    if (!this.db) throw new Error('Database not initialized');
+    const repoCount = this.db.prepare('SELECT COUNT(*) as count FROM repos').get() as { count: number };
+    const privateRepoCount = this.db.prepare('SELECT COUNT(*) as count FROM repos WHERE private = 1').get() as { count: number };
+    const activeRepoCount = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM repos r
+      WHERE EXISTS (
+        SELECT 1
+        FROM action_runs ar
+        WHERE ar.repo_id = r.id AND (
+          COALESCE(ar.conclusion, '') NOT IN ('failure', 'timed_out', 'cancelled')
+        )
+      )
+    `).get() as { count: number };
+    const prCount = this.db.prepare('SELECT COUNT(*) as count FROM pull_requests').get() as { count: number };
+    const runCount = this.db.prepare('SELECT COUNT(*) as count FROM action_runs').get() as { count: number };
+    const failureCount = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM action_runs
+      WHERE LOWER(COALESCE(conclusion, '')) IN ('failure', 'timed_out', 'cancelled')
+    `).get() as { count: number };
+    const languageCount = this.db.prepare(`
+      SELECT COUNT(DISTINCT language) as count
+      FROM repos
+      WHERE language IS NOT NULL AND TRIM(language) != ''
+    `).get() as { count: number };
+    const lastSyncedAt = this.getLastSyncedAt();
+    return {
+      repo_count: repoCount.count,
+      private_repo_count: privateRepoCount.count,
+      public_repo_count: repoCount.count - privateRepoCount.count,
+      active_repo_count: activeRepoCount.count,
+      pr_count: prCount.count,
+      issue_count: 0,
+      commit_count: 0,
+      run_count: runCount.count,
+      failure_count: failureCount.count,
+      language_count: languageCount.count,
+      last_synced_at: lastSyncedAt,
+    };
   }
 
   getRepoByGithubId(github_id: number): { id: number } | undefined {

@@ -21,16 +21,20 @@ export class PrsController {
 
   @Get()
   getPRs(
-    @Query('repoId') repoId: number,
+    @Query('repoId') repoId?: string,
     @Query('state') state: string = 'open',
     @Query('since') since: string = 'now',
   ) {
-    return this.prService.getPRs(repoId, state, since);
+    return this.prService.getPRs(
+      repoId ? Number(repoId) : undefined,
+      state,
+      since,
+    );
   }
 
   @Get(':id')
-  getPrById(@Param('id') id: number) {
-    return this.prService.getPrById(id);
+  getPrById(@Param('id') id: string) {
+    return this.prService.getPrById(Number(id));
   }
 
   @Post()

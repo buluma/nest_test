@@ -13,6 +13,7 @@ export interface GitHubRepository {
   };
   private: boolean;
   html_url: string;
+  language?: string | null;
   updated_at: string;
 }
 
@@ -71,6 +72,7 @@ export interface RepoDTO {
   owner_login: string;
   private: boolean;
   html_url: string;
+  language?: string | null;
   updated_at: string;
 }
 
@@ -121,7 +123,42 @@ export interface RepoRow {
   owner_login: string;
   private: number;
   html_url: string;
+  language?: string | null;
   updated_at: string;
+}
+
+export interface DashboardSummary {
+  repo_count: number;
+  private_repo_count: number;
+  public_repo_count: number;
+  active_repo_count: number;
+  pr_count: number;
+  issue_count: number;
+  commit_count: number;
+  run_count: number;
+  failure_count: number;
+  language_count: number;
+  last_synced_at: string | null;
+}
+
+export interface IssueRow {
+  id: number;
+  number: number;
+  title: string;
+  state: string;
+  html_url: string;
+  author_login: string;
+  repo_name?: string;
+  updated_at: string;
+}
+
+export interface CommitRow {
+  sha: string;
+  message: string;
+  html_url: string;
+  author_login: string;
+  repo_name?: string;
+  committed_at: string;
 }
 
 export interface PRRow {

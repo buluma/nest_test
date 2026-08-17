@@ -2,7 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Octokit } from 'octokit';
 import { GithubAppService } from './github-app.service';
 import { DatabaseService } from '../database/database.service';
-import { GitHubRepository, RepoDTO, PRDTO, RunDTO } from '../types/github';
+import {
+  GitHubRepository,
+  RepoDTO,
+  PRDTO,
+  RunDTO,
+  IssueRow,
+  CommitRow,
+} from '../types/github';
 
 interface InstallationRepositoriesResponse {
   repositories: GitHubRepository[];
@@ -44,6 +51,7 @@ export class GithubClientService {
       owner_login: repo.owner.login,
       private: repo.private,
       html_url: repo.html_url,
+      language: repo.language ?? null,
       updated_at: repo.updated_at,
     }));
   }
@@ -145,6 +153,74 @@ export class GithubClientService {
       run_started_at: run.run_started_at,
       updated_at: run.updated_at,
       completed_at: run.completed_at,
+    }));
+  }
+
+  async getIssues(
+    owner: string,
+    repo: string,
+    state: string = 'open',
+  ): Promise<IssueRow[]> {
+    try {
+      const { data } = await this.getOctokit().rest.issues.listForRepo({
+        owner,
+        repo,
+        state: state as 'open' | 'closed' | 'all',
+        sort: 'updated',
+        direction: 'desc',
+        per_page: 50,
+      });
+
+      const issues = data as unknown as Array<{
+        id: number;
+        number: number;
+        title: string;
+        state: string;
+        html_url: string;
+        user: { login: string } | null;
+        updated_at: string;
+        pull_request?: unknown;
+      }>;
+
+      return issues
+        .filter((issue) => !issue.pull_request)
+        .map((issue): IssueRow => ({
+          id: issue.id,
+          number: issue.number,
+          title: issue.title,
+          state: issue.state,
+          html_url: issue.html_url,
+          author_login: issue.user?.login ?? 'unknown',
+          updated_at: issue.updated_at,
+        }));
+    } catch (error) {
+      this.logger.warn(
+        `Issues unavailable for ${owner}/${repo}: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  async getCommits(owner: string, repo: string): Promise<CommitRow[]> {
+    const { data } = await this.getOctokit().rest.repos.listCommits({
+      owner,
+      repo,
+      per_page: 50,
+    });
+
+    const commits = data as unknown as Array<{
+      sha: string;
+      html_url: string;
+      commit: { message: string; committer: { date: string } | null };
+      author: { login: string } | null;
+    }>;
+
+    return commits.map((commit): CommitRow => ({
+      sha: commit.sha,
+      message: commit.commit.message,
+      html_url: commit.html_url,
+      author_login: commit.author?.login ?? 'unknown',
+      committed_at: commit.commit.committer?.date ?? new Date().toISOString(),
     }));
   }
 

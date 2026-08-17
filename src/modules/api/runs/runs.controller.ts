@@ -20,18 +20,18 @@ export class RunsController {
 
   @Get()
   getRuns(
-    @Query('repoId') repoId: number,
+    @Query('repoId') repoId?: string,
     @Query('status') status: string = 'all',
     @Query('since') since: string = 'now',
-    @Query('limit') limit: number = 100,
-    @Query('offset') offset: number = 0,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
   ) {
     return this.runsService.getRuns({
-      repoId,
+      repoId: repoId ? Number(repoId) : undefined,
       status,
       since,
-      limit,
-      offset,
+      limit: limit ? Number(limit) : 100,
+      offset: offset ? Number(offset) : 0,
     });
   }
 

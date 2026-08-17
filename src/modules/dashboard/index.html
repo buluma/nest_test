@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>okgithub</title>
+  <link rel="stylesheet" href="/dashboard/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="okgithub">
+        <svg viewBox="0 0 16 16" width="24" height="24" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        <span>okgithub</span>
+      </a>
+
+      <div class="topbar-search">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+          <path d="M11.5 10.5a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zm-6.5 0a6.5 6.5 0 1013 0 6.5 6.5 0 00-13 0z"/>
+        </svg>
+        <input id="repoSearch" type="search" placeholder="Search repositories..." aria-label="Search repositories">
+        <kbd>/</kbd>
+      </div>
+
+      <div class="topbar-controls">
+        <select id="visibilityFilter" aria-label="Visibility filter">
+          <option value="all">All visibility</option>
+          <option value="public">Public</option>
+          <option value="private">Private</option>
+        </select>
+        <select id="languageFilter" aria-label="Language filter">
+          <option value="all">All languages</option>
+        </select>
+        <select id="ciFilter" aria-label="CI filter">
+          <option value="all">All CI</option>
+          <option value="active">Active</option>
+          <option value="running">Running</option>
+          <option value="failed">Failed</option>
+          <option value="success">Success</option>
+        </select>
+        <button id="refreshBtn" class="btn-icon" type="button" aria-label="Refresh dashboard">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <path d="M15.5 8a7.5 7.5 0 01-6.83 7.39.75.75 0 00-.22 1.27 9 9 0 10.74-12.53.75.75 0 101.43.55 7.5 7.5 0 11-.12 3.32z"/>
+          </svg>
+          Refresh
+        </button>
+        <div class="summary-pill" title="Backend summary">
+          <span id="summary-language-count">0 languages</span>
+          <span id="summary-failure-count">0 failures</span>
+        </div>
+        <div id="selected-repo-label" class="summary-pill summary-pill-secondary" title="Selected repository">
+          No repository selected
+        </div>
+        <div class="avatar" title="User">OK</div>
+      </div>
+    </header>
+
+    <main class="dashboard-grid">
+      <aside class="panel repos-panel">
+        <div class="panel-head">
+          <div class="panel-title-row">
+            <h2>Repos</h2>
+            <div class="repo-tabs">
+              <button class="pill is-active" type="button">Active <span id="activeRepoCount">0</span></button>
+              <button class="pill" type="button">All <span id="allRepoCount">0</span></button>
+              <button class="pill" type="button">Private <span id="privateRepoCount">0</span></button>
+            </div>
+          </div>
+        </div>
+        <div id="repos-list" class="stack-list"></div>
+      </aside>
+
+      <section class="panel center-panel">
+        <div class="panel-head">
+          <div class="panel-title-row">
+            <h2>Pull Requests <span id="prs-count" class="count">0</span></h2>
+            <a class="panel-link" href="#" aria-label="View all pull requests">View all ↗</a>
+          </div>
+          <div class="tab-row" role="tablist" aria-label="Pull request state">
+            <button class="tab is-active" type="button" data-pr-state="all">All</button>
+            <button class="tab" type="button" data-pr-state="open">Open</button>
+            <button class="tab" type="button" data-pr-state="draft">Draft</button>
+            <button class="tab" type="button" data-pr-state="closed">Closed</button>
+          </div>
+          <select id="prRepoFilter" aria-label="Filter pull requests by repository">
+            <option value="">All Repositories</option>
+          </select>
+        </div>
+        <div id="prs-list" class="stack-list"></div>
+
+        <div class="one-up">
+          <section class="subpanel">
+            <div class="panel-head compact">
+              <div class="panel-title-row">
+                <h3>Issues <span id="issues-count" class="count">0</span></h3>
+                <a class="panel-link" href="#">View all ↗</a>
+              </div>
+            </div>
+            <div id="issues-list" class="stack-list"></div>
+          </section>
+        </div>
+
+        <div class="one-up">
+          <section class="subpanel">
+            <div class="panel-head compact">
+              <div class="panel-title-row">
+                <h3>Commits <span id="commits-count" class="count">0</span></h3>
+                <a class="panel-link" href="#">View all ↗</a>
+              </div>
+            </div>
+            <div id="commits-list" class="stack-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="panel runs-panel">
+        <div class="panel-head">
+          <div class="panel-title-row">
+            <h2>Workflow Failures</h2>
+            <span id="failures-subtitle" class="subtitle">7 recent non-green runs</span>
+          </div>
+          <div class="stack-controls">
+            <select id="runStatusFilter" aria-label="Filter workflow status">
+              <option value="all">All</option>
+              <option value="failed">Failed</option>
+              <option value="running">Running</option>
+              <option value="neutral">Neutral</option>
+            </select>
+            <select id="runRepoFilter" aria-label="Filter workflow runs by repository">
+              <option value="">All Repositories</option>
+            </select>
+          </div>
+        </div>
+        <div id="failures-list" class="stack-list"></div>
+
+        <section class="billing-card">
+          <div class="panel-head compact">
+            <div class="panel-title-row">
+              <h3>GitHub Actions Billing</h3>
+              <span id="billing-period" class="subtitle">Billing unavailable</span>
+            </div>
+          </div>
+          <div id="billing-content" class="stack-list"></div>
+        </section>
+      </aside>
+    </main>
+
+    <div class="statusbar">
+      <span id="lastUpdated">Last updated —</span>
+      <span id="summary-stats" class="statusbar-summary">0 repos · 0 PRs · 0 runs</span>
+    </div>
+  </div>
+  <script src="/dashboard/app.js"></script>
+</body>
+</html>

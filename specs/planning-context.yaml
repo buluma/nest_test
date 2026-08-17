@@ -1,0 +1,34 @@
+# specs/planning-context.yaml — written by elaborate-spec; consumed by scope-work and slice-tasks
+feature_name: "github-dashboard"
+problem_statement: |
+  Build a personal dashboard to monitor all PRs and GitHub Action runs across all repositories
+  where the GitHub App (ID 4605503) is installed. The dashboard should provide full visibility
+  into PR state (open/merged/closed) and Action run status/history with configurable time windows.
+constraints:
+  - "Single GitHub App installation (personal use only)"
+  - "GitHub App rate limit: 5000 req/hr per installation"
+  - "NestJS 11, TypeScript strict, Express platform"
+  - "TDD with Jest + Supertest"
+  - "Conservative polling (5 min interval) + webhooks for real-time updates"
+  - "SQLite for local persistence"
+  - "Vanilla JS + HTML frontend served by NestJS (no separate build)"
+out_of_scope:
+  - "Multi-user / multi-installation support"
+  - "Auth/SSO for dashboard access (assume local/trusted network)"
+  - "Complex filtering UI (basic filters only for MVP)"
+  - "Alerts/notifications"
+  - "Historical trend charts (DB ready, UI later)"
+  - "Webhook retry/dead-letter handling beyond basic logging"
+key_decisions:
+  - decision: "Use GitHub App authentication (not PAT) for higher quota and per-installation limits"
+    rationale: "App already configured (ID 4605503, private key present); better rate limits for polling multiple repos"
+  - decision: "Conservative polling (5 min) + webhooks for PR/check_run events"
+    rationale: "Balances freshness with rate limits; webhooks give real-time feel for key events"
+  - decision: "SQLite for persistence"
+    rationale: "Local file, zero config, persists history, enables future trends/charts"
+  - decision: "Vanilla JS + HTML served by NestJS"
+    rationale: "Simplest deploy (single binary), no build step, easy to customize, progressive enhancement friendly"
+  - decision: "Show cached data on load; background sync + manual refresh button"
+    rationale: "Instant dashboard UX; fresh data arrives via poller/webhooks; user can force refresh"
+  - decision: "Configurable time window (1h, 24h, 7d, 30d presets + custom)"
+    rationale: "Matches 'full visibility' requirement; enables both quick checks and historical review"

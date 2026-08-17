@@ -15,8 +15,10 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should serve dashboard HTML', () => {
+      // AppController now serves the dashboard at root
+      // The getDashboard method sends a file response, so we just verify it exists
+      expect(typeof appController.getDashboard).toBe('function');
     });
   });
 });

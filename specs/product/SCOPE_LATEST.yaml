@@ -1,0 +1,74 @@
+# specs/product/SCOPE_LATEST.yaml — Bounded PRD for github-dashboard
+# Source: specs/planning-context.yaml (elaborate-spec output)
+core_value: "Single-pane dashboard showing all PRs and GitHub Action runs across personal repos with instant cached views and background freshness"
+
+summary: |
+  Build a personal GitHub monitoring dashboard for repos where GitHub App (ID 4605503) is installed.
+  The dashboard provides full visibility into PR lifecycle (open/merged/closed) and Action run history
+  with configurable time windows. Data is persisted in SQLite for history/trends, refreshed via
+  conservative polling (5 min) + webhooks for real-time PR/check_run events, and served by a NestJS
+  API with a vanilla JS/HTML frontend — zero build step, single deploy.
+
+  MVP delivers: instant cached dashboard load, background sync, manual refresh, time-window presets,
+  basic repo/PR-state/Action-status filters. History enables future trend charts (out of scope for MVP).
+
+in_scope:
+  - "GitHub App authentication (installation token flow, token refresh)"
+  - "SQLite schema for repos, PRs, action_runs, webhook_events"
+  - "Background poller (5 min interval) fetching PRs + Action runs for all installed repos"
+  - "Webhook endpoint receiving PR + check_run events, upserting to SQLite"
+  - "REST API: GET /repos, GET /prs, GET /action-runs with filters (repo, state, status, time window)"
+  - "Vanilla JS/HTML dashboard served by NestJS (static files + API)"
+  - "Dashboard: cached instant load, time-window presets (1h/24h/7d/30d/custom), basic filters"
+  - "Manual refresh button triggering immediate GitHub API fetch + UI update"
+  - "Configurable poll interval via env (default 5 min)"
+  - "Health/ready endpoints for monitoring"
+
+out_of_scope:
+  - item: "Multi-user / multi-installation support"
+    reason: "Personal use only; adds token storage complexity, per-install rate limiting, auth UI"
+  - item: "Auth/SSO for dashboard access"
+    reason: "Assume local/trusted network; can add later via reverse proxy (nginx/OAuth2-Proxy)"
+  - item: "Complex filtering UI (multi-select, saved views, advanced queries)"
+    reason: "MVP = basic filters only; advanced UI deferred to post-MVP iteration"
+  - item: "Alerts/notifications (Slack, email, in-app)"
+    reason: "Separate concern; webhook infrastructure exists, notification layer can be added later"
+  - item: "Historical trend charts (PR throughput, Action duration trends, failure rates)"
+    reason: "DB schema supports it; UI/charting is post-MVP scope"
+  - item: "Webhook retry/dead-letter handling beyond basic logging"
+    reason: "GitHub retries; basic logging sufficient for personal use; robust queue is over-engineering"
+  - item: "PR review tracking, comment threads, merge conflict status"
+    reason: "Full visibility = state + checks; review details are deeper dive, out of MVP scope"
+  - item: "Action run logs/artifacts display"
+    reason: "Link to GitHub UI sufficient for MVP; inline logs add significant payload/complexity"
+
+constraints:
+  - "GitHub App rate limit: 5000 req/hr per installation (conservative polling respects this)"
+  - "NestJS 11, TypeScript strict, Express platform"
+  - "TDD with Jest + Supertest (unit + e2e)"
+  - "SQLite local file (no external DB dependency)"
+  - "Single binary deploy (NestJS serves API + static frontend)"
+  - "Private key for GitHub App stored outside repo (already configured in .env)"
+
+success_criteria:
+  - "Dashboard loads in <500ms showing cached data (PRs + Action runs)"
+  - "Background poller runs every 5 min without hitting rate limits (verified via logs)"
+  - "Webhook receives PR/check_run events and updates DB within 2s of GitHub delivery"
+  - "Manual refresh button fetches fresh data and updates UI without page reload"
+  - "Time window presets (1h, 24h, 7d, 30d) filter correctly on all list endpoints"
+  - "All installed repos visible; filter by repo, PR state, Action status works"
+  - "Unit + e2e tests pass; TypeScript strict compiles; ESLint clean"
+
+references:
+  - "specs/planning-context.yaml"
+  - ".env (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_PATH)"
+  - "GitHub App docs: https://docs.github.com/en/apps/creating-github-apps"
+
+# Traceability: each in_scope item maps to an epic/story (filled in by slice-tasks/plan-release)
+# e01: github-app-auth
+# e02: sqlite-persistence
+# e03: background-poller
+# e04: webhook-receiver
+# e05: rest-api
+# e06: vanilla-frontend
+# e07: dashboard-ux (filters, refresh, time windows)
